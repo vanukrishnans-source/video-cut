@@ -1,4 +1,4 @@
-# Video Cut v1.0
+# Video Cut v1.0.1
 
 Offline Android app to **trim**, **crop**, and **merge** video segments into one MP4.
 
@@ -9,7 +9,7 @@ Offline Android app to **trim**, **crop**, and **merge** video segments into one
 ## How to use
 
 1. Tap **Add video(s)** and pick one or more clips from the gallery.
-2. Drag the **large amber handles** on the timeline (or type Start/End as `mm:ss.ms`).
+2. Drag the **large amber handles** on the timeline (or type Start/End as `mm:ss.ms`). Tapping elsewhere on the track keeps your selection — only dragging a handle (or editing its time field) moves it.
 3. Tap **Add Segment** — repeat to mark more ranges from the same video (or switch to another video and add more).
 4. Reorder segments with ▲/▼; delete with the trash icon; preview with ▶.
 5. Choose a **Crop** preset (16:9, 9:16, 1:1, 4:3) or drag the crop rectangle.

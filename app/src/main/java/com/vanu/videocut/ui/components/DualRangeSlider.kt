@@ -10,6 +10,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -26,9 +27,15 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
+private enum class Thumb { Start, End }
+
 /**
  * Large dual-handle range slider for start/end trim.
- * Touch targets are deliberately huge for phone use.
+ *
+ * Handles move ONLY when the user deliberately drags that handle (or Start/End
+ * time fields are edited elsewhere). Tapping the track, preview, or elsewhere
+ * never jumps or resets the selection. A tap far from both thumbs may scrub
+ * the preview position only — it never changes start/end.
  */
 @Composable
 fun DualRangeSlider(
@@ -49,8 +56,14 @@ fun DualRangeSlider(
     val thumbPx = with(density) { thumbRadius.toPx() }
     val trackH = with(density) { trackHeight.toPx() }
 
-    var draggingStart by remember { mutableStateOf(false) }
-    var draggingEnd by remember { mutableStateOf(false) }
+    // Keep latest values for the long-lived pointerInput coroutine so dragging
+    // one thumb cannot reset the other to a stale composition-captured value.
+    val startMsState = rememberUpdatedState(startMs)
+    val endMsState = rememberUpdatedState(endMs)
+    val onRangeChangeState = rememberUpdatedState(onRangeChange)
+    val onScrubMsState = rememberUpdatedState(onScrubMs)
+
+    var activeThumb by remember { mutableStateOf<Thumb?>(null) }
 
     Box(
         modifier = modifier
@@ -62,59 +75,57 @@ fun DualRangeSlider(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(thumbRadius * 2 + 16.dp)
-                .pointerInput(duration) {
+                .pointerInput(duration, thumbPx) {
                     detectDragGestures(
                         onDragStart = { offset ->
                             val width = size.width.toFloat()
                             val usable = (width - 2 * thumbPx).coerceAtLeast(1f)
-                            val startX = thumbPx + (startMs.toFloat() / duration) * usable
-                            val endX = thumbPx + (endMs.toFloat() / duration) * usable
+                            val curStart = startMsState.value
+                            val curEnd = endMsState.value
+                            val startX = thumbPx + (curStart.toFloat() / duration) * usable
+                            val endX = thumbPx + (curEnd.toFloat() / duration) * usable
                             val dStart = abs(offset.x - startX)
                             val dEnd = abs(offset.x - endX)
-                            // Prefer nearer handle; large hit area
+                            // Only claim a thumb when the press is clearly on it.
                             val hit = thumbPx * 2.2f
-                            when {
-                                dStart <= hit && dStart <= dEnd -> {
-                                    draggingStart = true
-                                    draggingEnd = false
-                                }
-                                dEnd <= hit -> {
-                                    draggingEnd = true
-                                    draggingStart = false
-                                }
-                                offset.x < (startX + endX) / 2f -> {
-                                    draggingStart = true
-                                    draggingEnd = false
-                                }
+                            activeThumb = when {
+                                dStart <= hit && dStart <= dEnd -> Thumb.Start
+                                dEnd <= hit && dEnd < dStart -> Thumb.End
+                                dStart <= hit -> Thumb.Start
+                                dEnd <= hit -> Thumb.End
                                 else -> {
-                                    draggingEnd = true
-                                    draggingStart = false
+                                    // Tap/drag on empty track: scrub preview only —
+                                    // never move or reset either handle.
+                                    val frac = ((offset.x - thumbPx) / usable).coerceIn(0f, 1f)
+                                    val ms = (frac * duration).toLong()
+                                    onScrubMsState.value?.invoke(ms)
+                                    null
                                 }
                             }
                         },
-                        onDragEnd = {
-                            draggingStart = false
-                            draggingEnd = false
-                        },
-                        onDragCancel = {
-                            draggingStart = false
-                            draggingEnd = false
-                        },
+                        onDragEnd = { activeThumb = null },
+                        onDragCancel = { activeThumb = null },
                         onDrag = { change, _ ->
+                            val thumb = activeThumb ?: return@detectDragGestures
                             change.consume()
                             val width = size.width.toFloat()
                             val usable = (width - 2 * thumbPx).coerceAtLeast(1f)
                             val frac = ((change.position.x - thumbPx) / usable).coerceIn(0f, 1f)
                             val ms = (frac * duration).toLong()
                             val minGap = max(50L, duration / 200) // ~0.05s or 0.5%
-                            if (draggingStart) {
-                                val newStart = min(ms, endMs - minGap).coerceAtLeast(0L)
-                                onRangeChange(newStart, endMs)
-                                onScrubMs?.invoke(newStart)
-                            } else if (draggingEnd) {
-                                val newEnd = max(ms, startMs + minGap).coerceAtMost(duration)
-                                onRangeChange(startMs, newEnd)
-                                onScrubMs?.invoke(newEnd)
+                            val curStart = startMsState.value
+                            val curEnd = endMsState.value
+                            when (thumb) {
+                                Thumb.Start -> {
+                                    val newStart = min(ms, curEnd - minGap).coerceAtLeast(0L)
+                                    onRangeChangeState.value(newStart, curEnd)
+                                    onScrubMsState.value?.invoke(newStart)
+                                }
+                                Thumb.End -> {
+                                    val newEnd = max(ms, curStart + minGap).coerceAtMost(duration)
+                                    onRangeChangeState.value(curStart, newEnd)
+                                    onScrubMsState.value?.invoke(newEnd)
+                                }
                             }
                         },
                     )

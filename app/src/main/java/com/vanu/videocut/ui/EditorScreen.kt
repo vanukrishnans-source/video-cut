@@ -242,7 +242,7 @@ fun EditorScreen(
             Spacer(Modifier.height(16.dp))
             Text("Trim range", fontWeight = FontWeight.SemiBold, color = TextPrimary)
             Text(
-                "Drag the big handles or type times",
+                "Drag a handle (or type times) — tapping elsewhere keeps your selection",
                 color = TextSecondary,
                 fontSize = 12.sp,
             )
